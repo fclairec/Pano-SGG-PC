@@ -217,6 +217,8 @@ def test():
         unproj_pts = np.concatenate([unproj_pts, [[i] for i in box_labels_index]], axis=1)
 
         # visualize
+
+        # TODO: try using io_functions.plyfile pcd2ply and writeply
         debug = True
         if debug:
             # can not store class label index with open3d...need to find a way to store it
