@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 
@@ -24,6 +25,8 @@ def load_sgg_data(box_topk, rel_topk, custom_prediction_path, custom_data_info_p
         all_rel_scores = custom_prediction[str(image_idx)]['rel_scores']
         all_rel_pairs = custom_prediction[str(image_idx)]['rel_pairs']
 
+        box_labels_in_index = copy.deepcopy(box_labels)
+
         for i in range(len(box_labels)):
             box_labels[i] = ind_to_classes[box_labels[i]]
 
@@ -39,7 +42,7 @@ def load_sgg_data(box_topk, rel_topk, custom_prediction_path, custom_data_info_p
         rel_labels = rel_labels[:rel_topk]
         rel_scores = rel_scores[:rel_topk]
 
-        prediction_info_dict[img_name] = {'boxes': boxes, 'box_labels': box_labels, 'box_scores': box_scores,
+        prediction_info_dict[img_name] = {'boxes': boxes, 'box_labels': box_labels, 'box_labels_in_index': box_labels_in_index, 'box_scores': box_scores,
                                           'rel_labels': rel_labels, 'rel_scores': rel_scores, 'image_idx': image_idx}
 
     return prediction_info_dict

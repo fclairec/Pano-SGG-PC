@@ -12,18 +12,11 @@ from Colmap_test.python.read_write_dense import read_array
 
 from io_functions.sgg import load_sgg_data
 
+from io_functions.plyfile import PlyDataReader
 
 # ----------------------------------------------------------------------------- #
 # Helpers
 # ----------------------------------------------------------------------------- #
-def get_data_paths(colmap_root):
-    return {
-        'color': osp.join(colmap_root, 'color', '{}.jpg'),
-        'depth': osp.join(colmap_root, 'depth', '{}.png'),
-        'pose': osp.join(colmap_root, 'pose', '{}.txt'),
-        'intrinsics_depth': osp.join(colmap_root, 'intrinsic', 'intrinsic_depth.txt'),
-    }
-
 
 def unproject(k, depth_map, mask=None):
     if mask is None:
@@ -69,8 +62,6 @@ def find_nearest_pixel(img, target):
     return nonzero[nearest_index]
 
 
-
-
 def create_mask_for_depth(depth, boundingboxes):
     mask = np.zeros(depth.shape)
     for boundingbox in boundingboxes:
@@ -85,6 +76,23 @@ def create_mask_for_depth(depth, boundingboxes):
         # this order is right
         # mask[y1:y2, x1:x2] = 1
     return mask
+
+def project_depth_one_by_one(cam_matrix, depth, boundingbox, t, rotation_matrix):
+    depth = depth.copy() # avoid overwriting
+    mask = np.zeros(depth.shape)
+    x1 = int(boundingbox[0])
+    y1 = int(boundingbox[1])
+    x2 = int(boundingbox[2])
+    y2 = int(boundingbox[3])
+    centric_x = int((x1+x2)/2)
+    centric_y = int((y1+y2)/2)
+    point = find_nearest_pixel(depth, (centric_x, centric_y))
+    mask[point[0][1], point[0][0]] = 1
+    depth_masked = depth * mask
+    unproj_pts = unproject(cam_matrix, depth_masked)
+    unproj_pts = np.matmul(unproj_pts - t, rotation_matrix)
+    return unproj_pts
+
 
 def create_mask_for_color(depth, boundingboxes):
     mask = np.zeros(depth.shape)
@@ -108,9 +116,10 @@ def test():
     path_color_images = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_reconstruction/colmap/dense/images'
     custom_prediction_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_sg_pred/custom_prediction.json'
     custom_data_info_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_sg_pred/custom_data_info.json'
+    output_dir_center_points = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_center_point/'
 
     # load sg prediction
-    prediction_info_dict = load_sgg_data(box_topk=8, rel_topk=10, custom_prediction_path, custom_data_info_path)
+    prediction_info_dict = load_sgg_data(8, 10, custom_prediction_path, custom_data_info_path)
 
 
     paths = {'color': osp.join(path_color_images, '{}'),
@@ -128,11 +137,9 @@ def test():
     # # for testing
     # frame_ids = [1, 2, 3] 
     # for i, frame_id in enumerate(frame_ids):
-
     #     # load pose #(rotation matrix and translation vector)
     #     rotation_matrix = image_info_dic[frame_id].qvec2rotmat()
     #     t = image_info_dic[frame_id].tvec
-
     #     # load intrinsic
     #     fx = cameras_dic[image_info_dic[frame_id].camera_id].params[0]
     #     fy = cameras_dic[image_info_dic[frame_id].camera_id].params[1]
@@ -159,14 +166,10 @@ def test():
         # load depth map (H,W,C)
         depth= read_array(paths['depth'].format(image.name))
 
-        # resize = (160, 120) # w,h
         resize = (798, 600)  # w,h # we dont need to resize to 80 60 because the depth map from colmap is already very sparse
-        # resize = (80, 60)  # w,h  # for overlap compute we use 80*60 depth map to speed up
         # resize = None
 
         if resize:
-            # original size around w=1920, h= 1080 but not stable, differ from images to images
-            # Note that we may use 1900x1000 depth maps; however, camera matrix here is irrelevant to that.
             # adjust intrinsic matrix
             depth_map_size = (depth.shape[1], depth.shape[0]) # (w,h)
             cam_matrix = cam_matrix.copy()  # avoid overwriting
@@ -185,16 +188,8 @@ def test():
         image_name = image.name
         # find corresponding bounding boxes in sg prediction
         bboxes = prediction_info_dict[image_name]['boxes']
-        # get box labels
-        box_labels = prediction_info_dict[image_name]['box_labels']
         
-        # create mask for depth map
-        mask = create_mask_for_depth(depth, bboxes)
-        # apply mask to depth
-        depth_masked = depth * mask
-
-
-        # # load color image
+        # # load color image, just for debugging purpose
         # color_im = Image.open(paths['color'].format(image.name))
         # if resize: 
         #     color_im = color_im.resize(resize, Image.NEAREST)
@@ -206,27 +201,42 @@ def test():
         # color_im = Image.fromarray(color_masked.astype(np.uint8))
         # color_im.save('/home/dchangyu/Pano-SGG-PC/visualisation/data/' + str(image_name))
 
-        # un-project point cloud from depth map
-        unproj_pts = unproject(cam_matrix, depth_masked)
+        # This is the original code for parallel processing of depth map, but we cant keep track of the box labels
+        # ----------------------------------------------------------------------------- #
+        # # create mask for depth map
+        # mask = create_mask_for_depth(depth, bboxes)
+        # # apply mask to depth
+        # depth_masked = depth * mask
+        # # un-project point cloud from depth map
+        # unproj_pts = unproject(cam_matrix, depth_masked)
+        # # apply pose to unprojected points
+        # unproj_pts = np.matmul(unproj_pts - t, rotation_matrix)
+        # ----------------------------------------------------------------------------- #
 
-        # apply pose to unprojected points
-        unproj_pts = np.matmul(unproj_pts - t, rotation_matrix)
+        # Do the projection one by one instead of parallelism to keep track of the box labels
+        unproj_pts = []
+        for i, bbox in enumerate(bboxes):
+            # project depth map to 3d points
+            unproj_pts_one_by_one = project_depth_one_by_one(cam_matrix, depth, bbox, t, rotation_matrix)
+            unproj_pts.append(unproj_pts_one_by_one)
+        
+        unproj_pts = np.asarray(unproj_pts)
+        unproj_pts = unproj_pts.reshape(-1,3)
 
-        box_labels_index = range(len(box_labels))
-        # add additional box label list index to point cloud
-        unproj_pts = np.concatenate([unproj_pts, [[i] for i in box_labels_index]], axis=1)
-
-        # visualize
-
+        # get box labels in index
+        box_labels = prediction_info_dict[image_name]['box_labels']
+        box_labels_index = [i for i in range(len(box_labels))] # [0,1,2,3,4,5,6,7]
+        
         # TODO: try using io_functions.plyfile pcd2ply and writeply
-        debug = True
-        if debug:
-            # can not store class label index with open3d...need to find a way to store it
-            unproj_pts_vis = draw_point_cloud(unproj_pts, colors=[0., 0., 1.])
-            path = '/home/dchangyu/Pano-SGG-PC/visualisation/data/'
-            o3d.io.write_point_cloud(path + image_name  + '.ply', unproj_pts_vis)
-
-
+        plyDataReader = PlyDataReader()
+        plyDataReader.pcd2ply(unproj_pts, box_labels_index)
+        if not os.path.exists(output_dir_center_points):
+            os.makedirs(output_dir_center_points)
+        plyDataReader.write_ply(output_dir_center_points + image_name + '.ply')
+        
+        # for i, label in enumerate(box_labels):
+        #     print (f"{i} : {label}")
+        print('finish writing ply file for image: ' + image_name)
 
 if __name__ == '__main__':
     test()
