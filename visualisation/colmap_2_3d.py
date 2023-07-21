@@ -111,12 +111,15 @@ def create_mask_for_color(depth, boundingboxes):
 
 def test():
 
-    path_parameter = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_reconstruction/colmap/dense/sparse'
+    parameter_path_parameter = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_reconstruction/colmap/dense/sparse'
     path_depth_maps = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_reconstruction/colmap/dense/stereo/depth_maps'
     path_color_images = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_reconstruction/colmap/dense/images'
     custom_prediction_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_sg_pred/custom_prediction.json'
     custom_data_info_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_sg_pred/custom_data_info.json'
     output_dir_center_points = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_center_point/'
+    # (w,h) should be the same size as images used in sg prediction
+    resize = (798, 600)  
+    # resize = None
 
     # load sg prediction
     prediction_info_dict = load_sgg_data(8, 10, custom_prediction_path, custom_data_info_path)
@@ -125,8 +128,8 @@ def test():
     paths = {'color': osp.join(path_color_images, '{}'),
              # 'depth': osp.join(path_depth_maps, '{}.photometric.bin'),
              'depth': osp.join(path_depth_maps, '{}.geometric.bin'),
-             'pose': osp.join(path_parameter, 'images.bin'),
-             'camera_intrinsics': osp.join(path_parameter, 'cameras.bin'),
+             'pose': osp.join(parameter_path_parameter, 'images.bin'),
+             'camera_intrinsics': osp.join(parameter_path_parameter, 'cameras.bin'),
              }
 
     # "Camera", ["id", "model", "width", "height", "params"])
@@ -165,9 +168,6 @@ def test():
 
         # load depth map (H,W,C)
         depth= read_array(paths['depth'].format(image.name))
-
-        resize = (798, 600)  # w,h # we dont need to resize to 80 60 because the depth map from colmap is already very sparse
-        # resize = None
 
         if resize:
             # adjust intrinsic matrix
