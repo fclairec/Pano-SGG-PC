@@ -10,7 +10,7 @@ import open3d as o3d
 from Colmap_test.python.read_write_model import read_images_binary, read_cameras_binary
 from Colmap_test.python.read_write_dense import read_array
 
-from io_functions.sgg import load_sgg_data
+from io_functions.sgg import load_sgg_data, load_sgg_data_visual
 
 from io_functions.plyfile import PlyDataReader
 
@@ -93,6 +93,18 @@ def project_depth_one_by_one(cam_matrix, depth, boundingbox, t, rotation_matrix)
     unproj_pts = np.matmul(unproj_pts - t, rotation_matrix)
     return unproj_pts
 
+def project_depth_in_bbox_one_by_one(cam_matrix, depth, boundingbox, t, rotation_matrix):
+    depth = depth.copy() # avoid overwriting
+    mask = np.zeros(depth.shape)
+    x1 = int(boundingbox[0])
+    y1 = int(boundingbox[1])
+    x2 = int(boundingbox[2])
+    y2 = int(boundingbox[3])
+    mask[y1:y2, x1:x2] = 1
+    depth_masked = depth * mask
+    unproj_pts = unproject(cam_matrix, depth_masked)
+    unproj_pts = np.matmul(unproj_pts - t, rotation_matrix)
+    return unproj_pts
 
 def create_mask_for_color(depth, boundingboxes):
     mask = np.zeros(depth.shape)
@@ -118,7 +130,7 @@ def test():
     custom_data_info_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_sg_pred/custom_data_info.json'
     output_dir_center_points = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_center_point/'
     # (w,h) should be the same size as images used in sg prediction
-    resize = (798, 600)  
+    resize = (1996, 1500)  
     # resize = None
 
     # load sg prediction
@@ -238,5 +250,128 @@ def test():
         #     print (f"{i} : {label}")
         print('finish writing ply file for image: ' + image_name)
 
+def visualization():
+    parameter_path_parameter = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway_vis'
+    path_depth_maps = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway_vis'
+    path_color_images = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway_vis'
+    custom_prediction_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway_vis/custom_prediction_subset_2.json'
+    custom_data_info_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway_vis/custom_data_info.json'
+    output_dir_center_points = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway_vis/output/'
+    # (w,h) should be the same size as images used in sg prediction
+    resize = (1996, 1500)  
+    # resize = None
+
+    # load sg prediction
+    prediction_info_dict = load_sgg_data_visual(custom_prediction_path, custom_data_info_path)
+
+
+    paths = {'color': osp.join(path_color_images, '{}'),
+             # 'depth': osp.join(path_depth_maps, '{}.photometric.bin'),
+             'depth': osp.join(path_depth_maps, '{}.geometric.bin'),
+             'pose': osp.join(parameter_path_parameter, 'images.bin'),
+             'camera_intrinsics': osp.join(parameter_path_parameter, 'cameras.bin'),
+             }
+
+    # "Camera", ["id", "model", "width", "height", "params"])
+    cameras_dic = read_cameras_binary(paths['camera_intrinsics'])
+    # "Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"])
+    image_info_dic = read_images_binary(paths['pose'])
+
+    # # for testing
+    # frame_ids = [1, 2, 3] 
+    # for i, frame_id in enumerate(frame_ids):
+    #     # load pose #(rotation matrix and translation vector)
+    #     rotation_matrix = image_info_dic[frame_id].qvec2rotmat()
+    #     t = image_info_dic[frame_id].tvec
+    #     # load intrinsic
+    #     fx = cameras_dic[image_info_dic[frame_id].camera_id].params[0]
+    #     fy = cameras_dic[image_info_dic[frame_id].camera_id].params[1]
+    #     cx = cameras_dic[image_info_dic[frame_id].camera_id].params[2]
+    #     cy = cameras_dic[image_info_dic[frame_id].camera_id].params[3]
+
+    for i, image in image_info_dic.items():
+
+        if image.name not in prediction_info_dict.keys():
+            continue
+
+        # load pose #(rotation matrix and translation vector)
+        rotation_matrix = image.qvec2rotmat()
+        t = image.tvec
+
+        # load intrinsic
+        fx = cameras_dic[image.camera_id].params[0]
+        fy = cameras_dic[image.camera_id].params[1]
+        cx = cameras_dic[image.camera_id].params[2]
+        cy = cameras_dic[image.camera_id].params[3]
+        # build intrinsic matrix
+        cam_matrix = np.zeros(shape=(3,3))
+        cam_matrix[0] = [fx,0,cx]
+        cam_matrix[1] = [0,fy,cy]
+        cam_matrix[2] = [0,0,1]
+
+        # load depth map (H,W,C)
+        depth= read_array(paths['depth'].format(image.name))
+
+        if resize:
+            # adjust intrinsic matrix
+            depth_map_size = (depth.shape[1], depth.shape[0]) # (w,h)
+            cam_matrix = cam_matrix.copy()  # avoid overwriting
+            cam_matrix[0] /= depth_map_size[0] / resize[0]
+            cam_matrix[1] /= depth_map_size[1] / resize[1]
+        
+        # numpy -> Image
+        depth_im = Image.fromarray(depth) #(w,h)?
+        if resize: 
+            depth_im = depth_im.resize(resize, Image.NEAREST)
+        
+        # depth = np.asarray(depth_im, dtype=np.float32) / 1000.
+        depth = np.asarray(depth_im, dtype=np.float32)
+
+        # get image name
+        image_name = image.name
+        # find corresponding bounding boxes in sg prediction
+        bboxes = prediction_info_dict[image_name]['boxes']
+
+        # Do the projection one by one instead of parallelism to keep track of the box labels
+        unproj_center_pts = []
+        unproj_bbox_pts = []
+        for i, bbox in enumerate(bboxes):
+            # project depth map to 3d points
+            unproj_pts_one_by_one = project_depth_one_by_one(cam_matrix, depth, bbox, t, rotation_matrix)
+            unproj_center_pts.append(unproj_pts_one_by_one)
+            # project depth map in bbox to 3d points
+            unproj_pts_bbox = project_depth_in_bbox_one_by_one(cam_matrix, depth, bbox, t, rotation_matrix)
+            unproj_bbox_pts.append(unproj_pts_bbox)
+        
+        unproj_center_pts = np.asarray(unproj_center_pts)
+        unproj_center_pts = unproj_center_pts.reshape(-1,3)
+        
+        # create scalar list for visalization
+        scalar_list = [30 for i in range(unproj_bbox_pts[0].shape[0])] + [40 for i in range(unproj_bbox_pts[1].shape[0])]
+        unproj_bbox_pts = np.concatenate(unproj_bbox_pts, axis=0)
+
+        # get box labels in index
+        box_labels = prediction_info_dict[image_name]['box_labels']
+        box_labels_index = [i for i in range(len(box_labels))] # [0,1,2,3,4,5,6,7]
+        
+        plyDataReader = PlyDataReader()
+        plyDataReader.pcd2ply(unproj_center_pts, [0, 20])
+        if not os.path.exists(output_dir_center_points):
+            os.makedirs(output_dir_center_points)
+        plyDataReader.write_ply(output_dir_center_points + image_name + '.ply')
+
+        plyDataReader_bbox = PlyDataReader()
+        plyDataReader_bbox.pcd2ply(unproj_bbox_pts, scalar_list) # random number just for visualization
+        if not os.path.exists(output_dir_center_points):
+            os.makedirs(output_dir_center_points)
+        plyDataReader_bbox.write_ply(output_dir_center_points + image_name + '_bbox_projection.ply')
+
+
+
+        
+        # for i, label in enumerate(box_labels):
+        #     print (f"{i} : {label}")
+        print('finish writing ply file for image: ' + image_name)
+
 if __name__ == '__main__':
-    test()
+    visualization()
