@@ -69,12 +69,12 @@ def create_mask_for_depth(depth, boundingboxes):
         y1 = int(boundingbox[1])
         x2 = int(boundingbox[2])
         y2 = int(boundingbox[3])
-        centric_x = int((x1+x2)/2)
-        centric_y = int((y1+y2)/2)
-        point = find_nearest_pixel(depth, (centric_x, centric_y))
-        mask[point[0][1], point[0][0]] = 1
+        # centric_x = int((x1+x2)/2)
+        # centric_y = int((y1+y2)/2)
+        # point = find_nearest_pixel(depth, (centric_x, centric_y))
+        # mask[point[0][1], point[0][0]] = 1
         # this order is right
-        # mask[y1:y2, x1:x2] = 1
+        mask[y1:y2, x1:x2] = 1
     return mask
 
 def project_depth_one_by_one(cam_matrix, depth, boundingbox, t, rotation_matrix):

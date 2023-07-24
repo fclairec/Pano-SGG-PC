@@ -21,7 +21,10 @@ class PlyDataReader:
 
         vertex_data = ply_data['vertex']
         pos = np.stack((vertex_data['x'], vertex_data['y'], vertex_data['z']), axis=-1)
-        label = vertex_data['scalar_Scalar_field']
+        if 'scalar_Scalar_field' in [i.name for i in vertex_data.properties]:
+            label = vertex_data['scalar_Scalar_field']
+        else:
+            label = None
 
         Data = namedtuple('Data', ['pos', 'label'])
         data = Data(pos=pos, label=label)
