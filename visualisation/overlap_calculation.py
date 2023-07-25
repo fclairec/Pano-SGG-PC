@@ -133,23 +133,39 @@ def compute_overlaps():
             o3d.io.write_point_cloud(path + image_name + 'overlap_base_pts_vis' + '.ply', overlap_base_pts_vis)
             o3d.io.write_point_cloud(path + image_name + 'unproj_pts_vis' + '.ply', unproj_pts_vis)
     
-    to_remove = []
-
-    for i in range(len(overlaps[0])):
-        for j in range(i+1, len(overlaps[0])):
-            # calculate overlap between two images
-            overlap = np.sum(overlaps[0][i] & overlaps[0][j])
-            # if overlap is greater than 20 points, remove the second image
-            if overlap >= 20:
-                to_remove.append(j)
+    def get_overlapping_mask_indices(mask_arrays, overlap_threshold):
+        mask_arrays = [np.array(mask) for mask in mask_arrays]
+        n = len(mask_arrays)
+        
+        # Create a overlap matrix
+        overlap_matrix = np.zeros((n, n), dtype=int)
+        for i in range(n):
+            for j in range(i+1, n):
+                overlap_matrix[i, j] = np.sum(np.logical_and(mask_arrays[i], mask_arrays[j]))
+                overlap_matrix[j, i] = overlap_matrix[i, j]
+        
+        # Find the masks that have an overlap more than the threshold
+        mask_to_remove = np.any(overlap_matrix > overlap_threshold, axis=0)
+        
+        # Get the indices of the masks that have an overlap more than the threshold
+        mask_indices = [i for i, to_remove in enumerate(mask_to_remove) if to_remove]
+        
+        return mask_indices
     
-    print(overlaps)
+    overlap_threshold = 1000
+    filtered_mask_arrays = get_overlapping_mask_indices(overlaps, overlap_threshold)
+
 
     # remove images
-    for i in to_remove:
+    for i in filtered_mask_arrays:
+        print('removing image: ', i)
         image_info_dic.pop(str(i), None)
-    with open('saved_img_dictionary.pkl', 'wb') as f:
+    with open(f'saved_img_dictionary_threshold_{overlap_threshold}.pkl', 'wb') as f:
         pickle.dump(image_info_dic, f)
     return image_info_dic
+
 if __name__ == '__main__':
     compute_overlaps()
+    with open('saved_img_dictionary.pkl', 'rb') as f:
+        x = pickle.load(f)
+        print(x)
