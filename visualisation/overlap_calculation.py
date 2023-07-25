@@ -1,9 +1,6 @@
-import json
 import os
 import os.path as osp
-from functools import partial
 import pickle
-import cv2
 import numpy as np
 from PIL import Image
 import open3d as o3d
@@ -11,12 +8,30 @@ import open3d as o3d
 from Colmap_test.python.read_write_model import read_images_binary, read_cameras_binary
 from Colmap_test.python.read_write_dense import read_array
 
-from io_functions.sgg import load_sgg_data, load_sgg_data_visual
+from io_functions.sgg import load_sgg_data
 from io_functions.plyfile import PlyDataReader
 from visualisation.colmap_2_3d import create_mask_for_depth, draw_point_cloud, unproject
 
+def get_overlapping_mask_indices(mask_arrays, overlap_threshold):
+    mask_arrays = [np.array(mask) for mask in mask_arrays]
+    n = len(mask_arrays)
+    
+    # Create a overlap matrix
+    overlap_matrix = np.zeros((n, n), dtype=int)
+    for i in range(n):
+        for j in range(i+1, n):
+            overlap_matrix[i, j] = np.sum(np.logical_and(mask_arrays[i], mask_arrays[j]))
+            overlap_matrix[j, i] = overlap_matrix[i, j]
+    
+    # Find the masks that have an overlap more than the threshold
+    mask_to_remove = np.any(overlap_matrix > overlap_threshold, axis=0)
+    
+    # Get the indices of the masks that have an overlap more than the threshold
+    mask_indices = [i for i, to_remove in enumerate(mask_to_remove) if to_remove]
+    
+    return mask_indices
 
-def compute_overlaps():
+def compute_overlaps(overlap_threshold=500):
     # load the photogrammetry point cloud
     plyDataReader= PlyDataReader()
     plyDataReader.read_ply('/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/fused.ply')
@@ -34,14 +49,14 @@ def compute_overlaps():
     parameter_path_parameter = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/colmap/dense/sparse'
     path_depth_maps = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/colmap/dense/stereo/depth_maps'
     path_color_images = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/colmap/images'
-    custom_prediction_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/custom_prediction.json'
+    custom_prediction_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/subset_custom_prediction.json'
     custom_data_info_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/custom_data_info.json'
-    output_dir_center_points = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/'
+    output_dir = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/'
     # (w,h) should be the same size as images used in sg prediction
     resize = (1996, 1500)  
     # resize = None
     # load sg prediction
-    prediction_info_dict = load_sgg_data(8, 10, custom_prediction_path, custom_data_info_path)
+    prediction_info_dict = load_sgg_data(custom_prediction_path, custom_data_info_path)
     paths = {'color': osp.join(path_color_images, '{}'),
              # 'depth': osp.join(path_depth_maps, '{}.photometric.bin'),
              'depth': osp.join(path_depth_maps, '{}.geometric.bin'),
@@ -133,39 +148,19 @@ def compute_overlaps():
             o3d.io.write_point_cloud(path + image_name + 'overlap_base_pts_vis' + '.ply', overlap_base_pts_vis)
             o3d.io.write_point_cloud(path + image_name + 'unproj_pts_vis' + '.ply', unproj_pts_vis)
     
-    def get_overlapping_mask_indices(mask_arrays, overlap_threshold):
-        mask_arrays = [np.array(mask) for mask in mask_arrays]
-        n = len(mask_arrays)
-        
-        # Create a overlap matrix
-        overlap_matrix = np.zeros((n, n), dtype=int)
-        for i in range(n):
-            for j in range(i+1, n):
-                overlap_matrix[i, j] = np.sum(np.logical_and(mask_arrays[i], mask_arrays[j]))
-                overlap_matrix[j, i] = overlap_matrix[i, j]
-        
-        # Find the masks that have an overlap more than the threshold
-        mask_to_remove = np.any(overlap_matrix > overlap_threshold, axis=0)
-        
-        # Get the indices of the masks that have an overlap more than the threshold
-        mask_indices = [i for i, to_remove in enumerate(mask_to_remove) if to_remove]
-        
-        return mask_indices
-    
-    overlap_threshold = 1000
+   
     filtered_mask_arrays = get_overlapping_mask_indices(overlaps, overlap_threshold)
-
-
+    print('number of images to remove: ', len(filtered_mask_arrays))
     # remove images
     for i in filtered_mask_arrays:
-        print('removing image: ', i)
-        image_info_dic.pop(str(i), None)
-    with open(f'saved_img_dictionary_threshold_{overlap_threshold}.pkl', 'wb') as f:
+        print('removing image: ', image_info_dic[i].name)
+        image_info_dic.pop(i, None)
+    
+    path = os.path.join(output_dir, 'img_info_dic_threshold_{}.pkl'.format(overlap_threshold))
+    with open(path, 'wb') as f:
         pickle.dump(image_info_dic, f)
+
     return image_info_dic
 
 if __name__ == '__main__':
-    compute_overlaps()
-    with open('saved_img_dictionary.pkl', 'rb') as f:
-        x = pickle.load(f)
-        print(x)
+    compute_overlaps(overlap_threshold=1000)

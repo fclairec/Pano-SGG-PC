@@ -3,7 +3,7 @@ import json
 import os
 
 
-def load_sgg_data(box_topk, rel_topk, custom_prediction_path, custom_data_info_path):
+def load_sgg_data(custom_prediction_path, custom_data_info_path):
     '''
     # parameters
     box_topk = 8 # select top k bounding boxes
@@ -18,9 +18,9 @@ def load_sgg_data(box_topk, rel_topk, custom_prediction_path, custom_data_info_p
     for image_idx in range(len(custom_data_info['idx_to_files'])):
 
         img_name = os.path.basename(custom_data_info['idx_to_files'][image_idx])
-        boxes = custom_prediction[str(image_idx)]['bbox'][:box_topk]
-        box_labels = custom_prediction[str(image_idx)]['bbox_labels'][:box_topk]
-        box_scores = custom_prediction[str(image_idx)]['bbox_scores'][:box_topk]
+        boxes = custom_prediction[str(image_idx)]['bbox']
+        box_labels = custom_prediction[str(image_idx)]['bbox_labels']
+        box_scores = custom_prediction[str(image_idx)]['bbox_scores']
         all_rel_labels = custom_prediction[str(image_idx)]['rel_labels']
         all_rel_scores = custom_prediction[str(image_idx)]['rel_scores']
         all_rel_pairs = custom_prediction[str(image_idx)]['rel_pairs']
@@ -33,14 +33,13 @@ def load_sgg_data(box_topk, rel_topk, custom_prediction_path, custom_data_info_p
         rel_labels = []
         rel_scores = []
         for i in range(len(all_rel_pairs)):
-            if all_rel_pairs[i][0] < box_topk and all_rel_pairs[i][1] < box_topk:
-                rel_scores.append(all_rel_scores[i])
-                label = str(all_rel_pairs[i][0]) + '_' + box_labels[all_rel_pairs[i][0]] + ' => ' + ind_to_predicates[
-                    all_rel_labels[i]] + ' => ' + str(all_rel_pairs[i][1]) + '_' + box_labels[all_rel_pairs[i][1]]
-                rel_labels.append(label)
+            rel_scores.append(all_rel_scores[i])
+            label = str(all_rel_pairs[i][0]) + '_' + box_labels[all_rel_pairs[i][0]] + ' => ' + ind_to_predicates[
+                all_rel_labels[i]] + ' => ' + str(all_rel_pairs[i][1]) + '_' + box_labels[all_rel_pairs[i][1]]
+            rel_labels.append(label)
 
-        rel_labels = rel_labels[:rel_topk]
-        rel_scores = rel_scores[:rel_topk]
+        rel_labels = rel_labels
+        rel_scores = rel_scores
 
         prediction_info_dict[img_name] = {'boxes': boxes, 'box_labels': box_labels, 'box_labels_in_index': box_labels_in_index, 'box_scores': box_scores,
                                           'rel_labels': rel_labels, 'rel_scores': rel_scores, 'image_idx': image_idx}

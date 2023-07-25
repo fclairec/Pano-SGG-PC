@@ -2,6 +2,7 @@ import json
 import os
 import os.path as osp
 from functools import partial
+import pickle
 import cv2
 import numpy as np
 from PIL import Image
@@ -121,20 +122,22 @@ def create_mask_for_color(depth, boundingboxes):
     mask_3d = np.stack((mask,mask,mask),axis=2) #3 channel mask
     return mask_3d
 
-def test():
+def centerpoints_2d_to_3d():
 
-    parameter_path_parameter = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_reconstruction/colmap/dense/sparse'
-    path_depth_maps = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_reconstruction/colmap/dense/stereo/depth_maps'
-    path_color_images = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_reconstruction/colmap/dense/images'
-    custom_prediction_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_sg_pred/custom_prediction.json'
-    custom_data_info_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_sg_pred/custom_data_info.json'
-    output_dir_center_points = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_center_point/'
+    parameter_path_parameter = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/colmap/dense/sparse'
+    path_depth_maps = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/colmap/dense/stereo/depth_maps'
+    path_color_images = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/colmap/images'
+    custom_prediction_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/subset_custom_prediction.json'
+    custom_data_info_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/custom_data_info.json'
+    output_dir_center_points = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/center_points_without_overlap_filtering/'
+    image_info_dic_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/img_info_dic_threshold_200.pkl'
+
     # (w,h) should be the same size as images used in sg prediction
     resize = (1996, 1500)  
     # resize = None
 
     # load sg prediction
-    prediction_info_dict = load_sgg_data(8, 10, custom_prediction_path, custom_data_info_path)
+    prediction_info_dict = load_sgg_data(custom_prediction_path, custom_data_info_path)
 
 
     paths = {'color': osp.join(path_color_images, '{}'),
@@ -148,6 +151,10 @@ def test():
     cameras_dic = read_cameras_binary(paths['camera_intrinsics'])
     # "Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"])
     image_info_dic = read_images_binary(paths['pose'])
+
+    # instead of loading original image_info_dic, we load the filtered one
+    # with open(image_info_dic_path, 'rb') as f:
+    #     image_info_dic = pickle.load(f)
 
     # # for testing
     # frame_ids = [1, 2, 3] 
@@ -374,4 +381,5 @@ def visualization():
         print('finish writing ply file for image: ' + image_name)
 
 if __name__ == '__main__':
-    visualization()
+    # visualization()
+    centerpoints_2d_to_3d()
