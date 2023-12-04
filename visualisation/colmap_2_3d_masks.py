@@ -160,7 +160,6 @@ def seperate_masks(mask_image):
 
 
 def centerpoints_2d_to_3d():
-
     parameter_path_parameter = 'C:/projects/01_resources/coop_photog/info'
     path_depth_maps = 'C:/projects/01_resources/coop_photog/depth_maps'
     path_color_images = 'C:/projects/01_resources/coop_photog/images'
