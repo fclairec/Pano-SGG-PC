@@ -173,6 +173,7 @@ def centerpoints_2d_to_3d():
     prediction_masks = 'C:/projects/01_resources/coop_photog/preds_seminar2'
     #image_info_dic_path = '/mnt/c/Users/ge25yak/Desktop/SG_test_data/office_and_hallway/img_info_dic_threshold_200.pkl'
 
+
     paths = {'color': osp.join(path_color_images, '{}'),
              'depth': osp.join(path_depth_maps, '{}.geometric.bin'),
              'pose': osp.join(parameter_path_parameter, 'images.bin'),
