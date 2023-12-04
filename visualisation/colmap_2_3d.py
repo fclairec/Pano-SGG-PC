@@ -208,29 +208,6 @@ def centerpoints_2d_to_3d():
         # find corresponding bounding boxes in sg prediction
         bboxes = prediction_info_dict[image_name]['boxes']
         
-        # # load color image, just for debugging purpose
-        # color_im = Image.open(paths['color'].format(image.name))
-        # if resize: 
-        #     color_im = color_im.resize(resize, Image.NEAREST)
-        # color = np.asarray(color_im)
-        # # create mask for color image
-        # mask_3d = create_mask_for_color(depth, bboxes)
-        # color_masked = color * mask_3d
-        # # masked_img = cv2.findNonZero(color_masked)
-        # color_im = Image.fromarray(color_masked.astype(np.uint8))
-        # color_im.save('/home/dchangyu/Pano-SGG-PC/visualisation/data/' + str(image_name))
-
-        # This is the original code for parallel processing of depth map, but we cant keep track of the box labels
-        # ----------------------------------------------------------------------------- #
-        # # create mask for depth map
-        # mask = create_mask_for_depth(depth, bboxes)
-        # # apply mask to depth
-        # depth_masked = depth * mask
-        # # un-project point cloud from depth map
-        # unproj_pts = unproject(cam_matrix, depth_masked)
-        # # apply pose to unprojected points
-        # unproj_pts = np.matmul(unproj_pts - t, rotation_matrix)
-        # ----------------------------------------------------------------------------- #
 
         # Do the projection one by one instead of parallelism to keep track of the box labels
         unproj_pts = []
