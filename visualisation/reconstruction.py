@@ -118,6 +118,25 @@ def filter_depth(depth, masks, label_info, image_name, stats_dir):
     # TODO for now only mask
     depth_masks = []
     for mask in masks:
-        depth_masks.append(depth * mask)
+        # Apply mask to depth
+        masked_depth = depth * mask
+
+        # Calculate the mean and standard deviation of the depth values
+        mean_depth = np.mean(masked_depth[masked_depth > 0])
+        std_depth = np.std(masked_depth[masked_depth > 0])
+
+        # Define a threshold for filtering out outliers
+        threshold = 2  # You can adjust this value
+
+        # Filter out outliers
+        lower_bound = mean_depth - threshold * std_depth
+        upper_bound = mean_depth + threshold * std_depth
+        filtered_depth = np.where((masked_depth > lower_bound) & (masked_depth < upper_bound), masked_depth, 0)
+
+        depth_masks.append(filtered_depth)
+
     plot_depths(depth_masks, label_info, image_name, stats_dir)
+    # concatenate all depths maps into one depth map
+    depth = np.sum(depth_masks, axis=0)
+
     return depth
