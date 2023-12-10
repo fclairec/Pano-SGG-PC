@@ -5,6 +5,8 @@ from PIL import Image
 import os.path as osp
 from visualisation.utils_3d import compute_and_write_hull, write_and_show_pcd
 from plotting import plot_depths
+import cv2
+
 
 def load_reconstruction_parameters(image, camera):
     # load pose #(rotation matrix and translation vector)
@@ -25,7 +27,7 @@ def load_reconstruction_parameters(image, camera):
     return rotation_matrix, t, cam_matrix
 
 
-def load_depth(use_rgbd, deph_path, image_name, max_distance=3):
+def load_depth(use_rgbd, deph_path, image_name):
     mode = 'sensor'
     # load depth map (H,W,C)
     if use_rgbd:
@@ -39,9 +41,6 @@ def load_depth(use_rgbd, deph_path, image_name, max_distance=3):
         # numpy -> Image
         depth_im = Image.fromarray(depth)
         depth = np.asarray(depth_im, dtype=np.float32)
-
-    threshold_depth = max_distance * s
-    depth[depth > threshold_depth] = 0
 
     return depth
 
@@ -89,13 +88,16 @@ def image_wise_projection(output_dir, cam_matrix, depth, color_image, rotation_m
     write_and_show_pcd(output_dir, image_name, o3d_pcd)
 
 
-def instance_wise_projection(output_dir_bbox, output_dir_pcd, cam_matrix, depth_map, color_image, label_info, masks, rotation_matrix, t, image_name, downsample=False):
+def instance_wise_projection(output_dir_bbox, output_dir_pcd, cam_matrix, depth_map, color_image, label_info, masks, rotation_matrix, t, image_name, legen_colors, downsample=False):
     """ loops over all instances and projects them into 3d space"""
     label_info = label_info[1:]
-    for i, (mask, info) in enumerate(zip(masks, label_info)):
+    for i, (mask, info, legend_color) in enumerate(zip(masks, label_info, legen_colors)):
         print(f"processing instance {info.value}/{len(label_info)}: {info.label}")
         depth_masked = depth_map * mask
         point_array = unproject(cam_matrix, depth_masked, t, rotation_matrix, color_image=color_image)
+        if len(point_array) < 50:
+            print("not enough points for instance")
+            continue
 
         o3d_pcd = o3d.geometry.PointCloud()
         o3d_pcd.points = o3d.utility.Vector3dVector(point_array['points'])
@@ -107,36 +109,72 @@ def instance_wise_projection(output_dir_bbox, output_dir_pcd, cam_matrix, depth_
 
         instance_name_str = str(info.label)+"_"+str(info.value)
 
-        compute_and_write_hull(output_dir_bbox, image_name, o3d_pcd, instance_name_str)
+        
+
+        compute_and_write_hull(output_dir_bbox, image_name, o3d_pcd, legend_color,  instance_name_str)
         write_and_show_pcd(output_dir_pcd, image_name, o3d_pcd, instance_name_str)
 
     return
+
+def statistical_filtering(masked_depth, threshold):
+    # statistical outlier filtering
+
+    mean_depth = np.mean(masked_depth[masked_depth > 0])
+    std_depth = np.std(masked_depth[masked_depth > 0])
+
+    # Filter out outliers
+    lower_bound = mean_depth - threshold * std_depth
+    upper_bound = mean_depth + threshold * std_depth
+    filtered_depth = np.where((masked_depth > lower_bound) & (masked_depth < upper_bound), masked_depth, 0)
+    return filtered_depth
+
+def custom_semantic_filtering(masked_depth, label, s):
+    # custom semantic-wise filtering
+    if label.label == "ceiling" or label.label == "floor":
+        max_distance = 100
+        threshold_depth = max_distance * s
+    elif label.label == "person":
+        max_distance = 0
+        threshold_depth = max_distance * s
+    else:
+        max_distance = 5
+        threshold_depth = max_distance * s
+
+    masked_depth[masked_depth > threshold_depth] = 0
+
+    return masked_depth
+
+def shrink_mask(mask):
+    # shrink mask to remove outliers
+    kernel = np.ones((5, 5), np.uint8)
+    small_mask = cv2.erode(mask, kernel, iterations=1)
+    return small_mask
+
 
 
 def filter_depth(depth, masks, label_info, image_name, stats_dir):
     # TODO should contain the scaling, the distance threshhold and mask.
     # TODO for now only mask
+    s = 0.453
+
+
     depth_masks = []
-    for mask in masks:
+
+    for i, mask in enumerate(masks):
+
+        small_mask = shrink_mask(mask)
+
         # Apply mask to depth
-        masked_depth = depth * mask
+        masked_depth = depth * small_mask
 
-        # Calculate the mean and standard deviation of the depth values
-        mean_depth = np.mean(masked_depth[masked_depth > 0])
-        std_depth = np.std(masked_depth[masked_depth > 0])
+        masked_depth = statistical_filtering(masked_depth, 2)
 
-        # Define a threshold for filtering out outliers
-        threshold = 2  # You can adjust this value
+        masked_depth = custom_semantic_filtering(masked_depth, label_info[i + 1], s)
 
-        # Filter out outliers
-        lower_bound = mean_depth - threshold * std_depth
-        upper_bound = mean_depth + threshold * std_depth
-        filtered_depth = np.where((masked_depth > lower_bound) & (masked_depth < upper_bound), masked_depth, 0)
+        depth_masks.append(masked_depth)
 
-        depth_masks.append(filtered_depth)
-
-    plot_depths(depth_masks, label_info, image_name, stats_dir)
+    legend_colors = plot_depths(depth_masks, label_info, image_name, stats_dir)
     # concatenate all depths maps into one depth map
     depth = np.sum(depth_masks, axis=0)
 
-    return depth
+    return depth, legend_colors

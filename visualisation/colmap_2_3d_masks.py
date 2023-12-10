@@ -7,33 +7,50 @@ from io_functions.load_new_prediction_data import load_predictions
 from reconstruction import load_reconstruction_parameters, load_depth, filter_depth
 from reconstruction import image_wise_projection, instance_wise_projection
 from utils_2d import seperate_masks
+from plotting import recolor_masks
+from pathlib import Path
 
-
+def generate_output_dirs(output_root_dir, point_clouds_path, alignment_checks, output_dir_bbox, projected_mask_2d, stats_dir):
+    # create output directories
+    if not os.path.exists(output_root_dir):
+        os.mkdir(output_root_dir)
+    if not os.path.exists(point_clouds_path):
+        os.mkdir(point_clouds_path)
+    if not os.path.exists(alignment_checks):
+        os.mkdir(alignment_checks)
+    if not os.path.exists(output_dir_bbox):
+        os.mkdir(output_dir_bbox)
+    if not os.path.exists(projected_mask_2d):
+        os.mkdir(projected_mask_2d)
+    if not os.path.exists(stats_dir):
+        os.mkdir(stats_dir)
 
 
 def centerpoints_2d_to_3d():
-    parameter_path_parameter = 'C:/projects/01_resources/coop_photog/info'
-    path_depth_maps = 'C:/projects/01_resources/coop_photog/depth_maps'
-    path_color_images = 'C:/projects/01_resources/coop_photog/images'
-    path_depth_sensor = 'C:/projects/01_resources/coop_photog/depth_sensor'
-    custom_prediction_path = '...'
-    custom_data_info_path = '...'
-    point_clouds_path = 'C:/projects/01_resources/coop_photog/0412_sensor_point_clouds'
-    alignment_checks = 'C:/projects/01_resources/coop_photog/0412_alignment_checks'
-    output_dir_center_points = 'C:/projects/01_resources/coop_photog/center_points'
-    output_dir_bbox = 'C:/projects/01_resources/coop_photog/0412_box_sensor_point_clouds'
-    prediction_masks = 'C:/projects/01_resources/coop_photog/preds_seminar2'
-    stats_dir = 'C:/projects/01_resources/coop_photog/0412_stats'
-
+    root_dir = Path('C:/projects/01_resources/coop_photog')
+    parameter_path_parameter = root_dir / 'info'
+    path_depth_maps = root_dir /'depth_maps'
+    path_color_images = root_dir /'images'
+    path_depth_sensor = root_dir / 'depth_sensor'
+    path_predictions = 'C:/projects/01_resources/coop_photog/predictions'
+    output_root_dir = root_dir / 'output'
+    point_clouds_path = output_root_dir / 'point_clouds'
+    alignment_checks = output_root_dir / 'alignment_checks'
+    output_dir_bbox = output_root_dir / 'convex_hulls'
+    projected_mask_2d = output_root_dir / 'mask_2d'
+    stats_dir = output_root_dir / 'stats'
 
     paths = {'color': osp.join(path_color_images, '{}'),
              'depth': osp.join(path_depth_maps, '{}.geometric.bin'),
              'pose': osp.join(parameter_path_parameter, 'images.bin'),
              'camera_intrinsics': osp.join(parameter_path_parameter, 'cameras.bin'),
              'depth_sensor': osp.join(path_depth_sensor, '{}_depth.png'),
-             'prediction_masks': osp.join(prediction_masks, '{}_mask.png'),
-             'label_info': osp.join(prediction_masks, '{}_label.json')
+             'path_predictions': osp.join(path_predictions, '{}_mask.png'),
+             'projected_mask_2d': osp.join(projected_mask_2d, '{}_projected_masks.png'),
+             'label_info': osp.join(path_predictions, '{}_label.json')
              }
+
+    generate_output_dirs(output_root_dir, point_clouds_path, alignment_checks, output_dir_bbox, projected_mask_2d, stats_dir)
 
     # "Camera", ["id", "model", "width", "height", "params"])
     cameras_dic = read_cameras_binary(paths['camera_intrinsics'])
@@ -53,7 +70,13 @@ def centerpoints_2d_to_3d():
             continue"""
         """if j>5:
             break"""
-        if image.name not in ["20231108_112532_color.jpg", "20231108_112527_color.jpg", "20231108_112933_color.jpg",  "20231108_112925_color.jpg"]:
+
+        """["20231108_112532_color.jpg", "20231108_112527_color.jpg", "20231108_112933_color.jpg",
+         "20231108_112925_color.jpg", "20231108_112534_color.jpg", "20231108_112533_color.jpg",
+         "20231108_112526_color.jpg", "20231108_112912_color.jpg", "20231108_112919_color.jpg",
+         "20231108_112921_color.jpg", "20231108_112930_color.jpg"]:"""
+        if image.name not in ["20231108_112919_color.jpg"]:
+
             continue
         print("processing image: ", image.name)
         # load color image
@@ -75,12 +98,16 @@ def centerpoints_2d_to_3d():
         output_file = os.path.join(alignment_checks, image.name.split("_color")[0] + '.xyz')
         #image_wise_projection(alignment_checks, cam_matrix, depth, color_image, rotation_matrix, t, image_name, downsample=0.05*s)
 
-        mask_image = cv2.imread(paths["prediction_masks"].format(image.name), cv2.IMREAD_GRAYSCALE)
+        mask_image = cv2.imread(paths["path_predictions"].format(image.name), cv2.IMREAD_GRAYSCALE)
         masks = seperate_masks(mask_image)
 
-        depth = filter_depth(depth, masks, label_info[image.name], image.name, os.path.join(stats_dir, "depth_histo"))
+        depth, legend_colors = filter_depth(depth, masks, label_info[image.name], image.name, stats_dir)
 
-        instance_wise_projection(output_dir_bbox, point_clouds_path, cam_matrix, depth, color_image, label_info[image.name], masks, rotation_matrix, t, image.name)
+        instance_wise_projection(output_dir_bbox, point_clouds_path, cam_matrix, depth, color_image, label_info[image.name], masks, rotation_matrix, t, image.name, legend_colors)
+
+        # recolor masks on images
+        recolor_masks(masks, label_info[image.name], legend_colors, paths["projected_mask_2d"].format(image.name), color_image)
+
 
 
 

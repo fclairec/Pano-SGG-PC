@@ -2,7 +2,8 @@ import os
 import os.path as osp
 import open3d as o3d
 import numpy as np
-def compute_and_write_hull(output_dir_center_bbox, image_name, o3d_pcd, inst_i=None):
+
+def compute_and_write_hull(output_dir_center_bbox, image_name, o3d_pcd, legend_color, inst_i=None):
     # Compute the convex hull
     try:
         nb_neighbors = 50
@@ -35,8 +36,8 @@ def compute_and_write_hull(output_dir_center_bbox, image_name, o3d_pcd, inst_i=N
 
     mtl_content = (
         "newmtl TransparentMaterial\n"
-        "Kd 0.4 0.4 0.4\n"
-        "d 0.5  # Opacity: 0.5 means 50% transparent\n"
+        f"Kd {legend_color[0]} {legend_color[1]} {legend_color[2]}\n"
+        "d 0.6  # Opacity: 0.5 means 50% transparent\n"
     )
 
     # Write the MTL content to the file
