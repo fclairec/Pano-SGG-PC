@@ -6,6 +6,9 @@ import os.path as osp
 from visualisation.utils_3d import compute_and_write_hull, write_and_show_pcd
 from plotting import plot_depths
 import cv2
+from sklearn.cluster import DBSCAN
+from sklearn.neighbors import NearestNeighbors
+
 
 
 def load_reconstruction_parameters(image, camera):
@@ -88,6 +91,31 @@ def image_wise_projection(output_dir, cam_matrix, depth, color_image, rotation_m
     write_and_show_pcd(output_dir, image_name, o3d_pcd)
 
 
+
+def filter_pcd(o3d_pcd, voxel_size, downsample=False, DBScan=False, stat=False):
+    if downsample:
+        o3d_pcd = o3d_pcd.voxel_down_sample(voxel_size=voxel_size)
+    if DBScan:
+        dbscan = DBSCAN(eps=0.1,
+                        min_samples=50)  # eps is the maximum distance for two points to be considered in the same neighborhood, min_samples is the minimum number of points to form a dense region
+        clusters = dbscan.fit_predict(o3d_pcd.points)
+        print(f"number of clusters: {len(np.unique(clusters))}")
+        # if we have multiple clusters except from -1 (background) select the one with largest nb of points
+        if len(np.unique(clusters)) > 1:
+            unique, counts = np.unique(clusters, return_counts=True)
+            max_index = np.argmax(counts)
+            cluster = unique[max_index]
+            print(f"selected cluster: {cluster}")
+            o3d_pcd = o3d_pcd.select_by_index(np.where(clusters == cluster)[0])
+
+    if stat:
+        nb_neighbors = 50
+        std_ratio = 2.0
+        cl, ind = o3d_pcd.remove_statistical_outlier(nb_neighbors, std_ratio)
+        o3d_pcd = o3d_pcd.select_by_index(ind)
+
+    return o3d_pcd
+
 def instance_wise_projection(output_dir_bbox, output_dir_pcd, cam_matrix, depth_map, color_image, label_info, masks, rotation_matrix, t, image_name, legen_colors, downsample=False):
     """ loops over all instances and projects them into 3d space"""
     label_info = label_info[1:]
@@ -103,13 +131,12 @@ def instance_wise_projection(output_dir_bbox, output_dir_pcd, cam_matrix, depth_
         o3d_pcd.points = o3d.utility.Vector3dVector(point_array['points'])
         # Assign colors to the point cloud
         o3d_pcd.colors = o3d.utility.Vector3dVector(point_array['color'] / 255)
-        if downsample:
-            voxel_size = downsample
-            o3d_pcd = o3d_pcd.voxel_down_sample(voxel_size=voxel_size)
+
+        # filter point cloud
+        filter_options = {"downsample": True, "DBScan": True, "stat": True}
+        o3d_pcd = filter_pcd(o3d_pcd, downsample, **filter_options)
 
         instance_name_str = str(info.label)+"_"+str(info.value)
-
-        
 
         compute_and_write_hull(output_dir_bbox, image_name, o3d_pcd, legend_color,  instance_name_str)
         write_and_show_pcd(output_dir_pcd, image_name, o3d_pcd, instance_name_str)
@@ -152,10 +179,10 @@ def shrink_mask(mask):
 
 
 
-def filter_depth(depth, masks, label_info, image_name, stats_dir):
+def filter_depth(depth, masks, label_info, image_name, stats_dir, s):
     # TODO should contain the scaling, the distance threshhold and mask.
     # TODO for now only mask
-    s = 0.453
+
 
 
     depth_masks = []

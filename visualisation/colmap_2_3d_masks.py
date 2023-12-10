@@ -75,7 +75,12 @@ def centerpoints_2d_to_3d():
          "20231108_112925_color.jpg", "20231108_112534_color.jpg", "20231108_112533_color.jpg",
          "20231108_112526_color.jpg", "20231108_112912_color.jpg", "20231108_112919_color.jpg",
          "20231108_112921_color.jpg", "20231108_112930_color.jpg"]:"""
-        if image.name not in ["20231108_112919_color.jpg"]:
+
+        # ["20231108_112919_color.jpg"]
+        if image.name not in ["20231108_112532_color.jpg", "20231108_112527_color.jpg", "20231108_112933_color.jpg",
+         "20231108_112925_color.jpg", "20231108_112534_color.jpg", "20231108_112533_color.jpg",
+         "20231108_112526_color.jpg", "20231108_112912_color.jpg", "20231108_112919_color.jpg",
+         "20231108_112921_color.jpg", "20231108_112930_color.jpg"]:
 
             continue
         print("processing image: ", image.name)
@@ -101,9 +106,10 @@ def centerpoints_2d_to_3d():
         mask_image = cv2.imread(paths["path_predictions"].format(image.name), cv2.IMREAD_GRAYSCALE)
         masks = seperate_masks(mask_image)
 
-        depth, legend_colors = filter_depth(depth, masks, label_info[image.name], image.name, stats_dir)
+        s = 0.453
+        depth, legend_colors = filter_depth(depth, masks, label_info[image.name], image.name, stats_dir, s)
 
-        instance_wise_projection(output_dir_bbox, point_clouds_path, cam_matrix, depth, color_image, label_info[image.name], masks, rotation_matrix, t, image.name, legend_colors)
+        instance_wise_projection(output_dir_bbox, point_clouds_path, cam_matrix, depth, color_image, label_info[image.name], masks, rotation_matrix, t, image.name, legend_colors, downsample=0.01*s)
 
         # recolor masks on images
         recolor_masks(masks, label_info[image.name], legend_colors, paths["projected_mask_2d"].format(image.name), color_image)

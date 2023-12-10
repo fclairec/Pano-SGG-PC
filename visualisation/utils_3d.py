@@ -3,19 +3,14 @@ import os.path as osp
 import open3d as o3d
 import numpy as np
 
+
 def compute_and_write_hull(output_dir_center_bbox, image_name, o3d_pcd, legend_color, inst_i=None):
     # Compute the convex hull
     try:
-        nb_neighbors = 50
-        std_ratio = 2.0
-        cl, ind = o3d_pcd.remove_statistical_outlier(nb_neighbors, std_ratio)
-        inlier_cloud = o3d_pcd.select_by_index(ind)
-
-        hull, _ = inlier_cloud.compute_convex_hull()
+        hull, _ = o3d_pcd.compute_convex_hull()
     except:
         print("no hull found")
         return
-    # hull.paint_uniform_color([1, 0, 0, 0.5])  # Example: Red color with 50% transparency
 
     lines = o3d.geometry.LineSet.create_from_triangle_mesh(hull)
     lines.paint_uniform_color([1, 0, 0])
@@ -68,7 +63,7 @@ def write_and_show_pcd(point_clouds_path, image_name, pcd: o3d.geometry.PointClo
     # Manually format each point and its color into a string
     formatted_lines = [
         f"{point[0]} {point[1]} {point[2]} {int(color[0])} {int(color[1])} {int(color[2])}"
-        for point, color in zip(pcd.points, np.array(pcd.colors)*255)
+        for point, color in zip(pcd.points, np.array(pcd.colors) * 255)
     ]
     # Join the lines into a single string
     data_str = "\n".join(formatted_lines)
